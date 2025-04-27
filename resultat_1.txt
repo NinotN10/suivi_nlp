@@ -1,0 +1,47 @@
+Rapport d'Analyse Textuelle Préliminaire : Dataset Reddit Suicide/Non-Suicide
+
+Objectif : Ce rapport détaille les résultats de l'analyse exploratoire et du prétraitement linguistique complémentaire effectués sur le jeu de données suicide_prediction_dataset_phr, conformément aux étapes définies dans le script src/part1/analysis.py. L'objectif est d'évaluer les caractéristiques du texte pré-nettoyé et de préparer les données pour une modélisation ultérieure de classification binaire.
+
+Méthodologie : L'analyse a suivi les étapes suivantes :
+
+Chargement du dataset (format Parquet).
+Vérification de la structure et de la distribution des étiquettes.
+Analyse fréquentielle des tokens sur les données pré-nettoyées.
+Application de la lemmatisation (NLTK WordNet) pour normalisation morphologique.
+Analyse fréquentielle des tokens lemmatisés.
+Extraction et analyse des bi-grammes et tri-grammes fréquents sur les données lemmatisées.
+Vérification de la conformité à la Loi de Zipf. Les visualisations ont été générées à l'aide de Seaborn et WordCloud, et sauvegardées dans le répertoire outputs/part1/plots/.
+
+Résultats et Analyse :
+
+Chargement et Exploration Initiale :
+
+Le dataset, chargé depuis dataset/train.parquet, contient 185 574 échantillons avec les colonnes 'text' et 'label', sans valeurs manquantes détectées.
+L'analyse de la distribution des étiquettes révèle un équilibre quasi parfait entre les classes : 'suicide' (50.05%) et 'non-suicide' (49.95%). Cette balance est confirmée par le graphique 1_label_distribution.png et constitue un atout majeur pour l'entraînement d'un classificateur non biaisé.
+
+Analyse Fréquentielle (Pré-Lemmatisation) :
+
+La tokenisation du texte pré-nettoyé a produit 11 547 302 tokens.
+L'analyse fréquentielle (logs et graphiques 2a_freq_dist_bar.png, 2b_freq_dist_wordcloud.png) montre une distribution typique où quelques mots dominent. Le token 'not' (543 468 occurrences) est de loin le plus fréquent, résultat de sa conservation intentionnelle lors du nettoyage initial. Suivent des termes courants comme 'like' (148k), 'want' (139k), 'know' (118k), 'feel' (109k), et 'life' (103k). Le nuage de mots met également en évidence des termes pertinents tels que 'friend', 'time', 'people', 'help', 'tired', 'pain', et 'suicide'.
+
+Traitement Linguistique : Lemmatisation :
+
+La lemmatisation a été appliquée avec succès pour réduire les mots à leur forme de base (lemme), comme en témoignent les exemples dans les logs ('going' -> 'go', 'tired' -> 'tire'). Cette étape vise à regrouper les variations d'un même mot pour une analyse sémantique plus robuste.
+
+Analyse Fréquentielle (Post-Lemmatisation) :
+
+Après lemmatisation, 'not' reste le token le plus fréquent. Cependant, les fréquences et les rangs des autres mots majeurs sont modifiés (voir logs et 4_freq_dist_bar_lemmatized.png). Les lemmes de verbes courants comme 'want' (163k), 'get' (158k), 'go' (154k), 'like' (151k), 'feel' (137k), 'make' (86k), 'think' (76k) voient leurs comptes augmenter significativement par rapport à leurs formes pré-lemmatisation. Notamment, le lemme 'fuck' (76k) apparaît dans le top 15, indiquant une utilisation fréquente de ses différentes formes.
+
+Analyse des N-grammes (Basée sur les Images Fournies) :
+
+Note : Les logs fournis pour les n-grammes montrent des résultats incohérents (ex: 'aute irure', 'battlestar galactica') qui ne correspondent pas aux visualisations générées (5a_bigram_freq.png, 5b_trigram_freq.png). L'analyse suivante se base sur les visualisations, qui semblent plus plausibles et alignées avec le reste de l'analyse.
+Bi-grammes (5a_bigram_freq.png) : L'analyse révèle la prédominance des séquences impliquant la négation : 'not know' (>50k), 'feel like' (~45k), 'not want' (~43k), 'not even', 'not get', 'not think'. Des expressions sémantiquement riches comme 'want die' sont également très fréquentes. Des répétitions ('filler filler', 'fuck fuck') sont observées et nécessitent une attention particulière.
+Tri-grammes (5b_trigram_freq.png) : Les tri-grammes les plus fréquents sont massivement dominés par des répétitions ('filler filler filler' >30k, 'fuck fuck fuck', 'sus sus sus', etc.). Malgré ce bruit apparent, des séquences pertinentes émergent : 'not even know', 'feel like not', 'not feel like', 'not want live', 'not know anymore', 'not want die'. Ces séquences plus longues capturent des expressions complexes potentiellement discriminantes pour la classification.
+
+Vérification de la Loi de Zipf :
+
+Le graphique log-log (6_zipf_law.png) montre une relation approximativement linéaire entre le logarithme du rang et le logarithme de la fréquence des tokens lemmatisés. Cette observation est conforme à la Loi de Zipf, indiquant que la distribution des mots dans le corpus, bien que spécifique, suit les tendances générales observées dans les langues naturelles.
+
+Conclusion :
+
+L'analyse exploratoire confirme que le jeu de données est volumineux, bien équilibré entre les classes 'suicide' et 'non-suicide', et linguistiquement cohérent (conformité à la loi de Zipf). Le nettoyage initial et la lemmatisation ont permis d'identifier un vocabulaire clé dominé par la négation ('not') et des termes liés aux sentiments, désirs et actions. L'analyse des n-grammes souligne l'importance capitale des expressions de négation et des séquences spécifiques ('want die', 'feel like') pour la tâche de classification. Cependant, elle révèle également une présence notable de séquences répétitives (particulièrement dans les tri-grammes) qui pourraient représenter du bruit ou des artefacts spécifiques à la source des données (Reddit) et devront être considérées lors de la modélisation. Le dataset est jugé apte pour les étapes suivantes de préparation et de modélisation, en gardant à l'esprit la nécessité potentielle de gérer les séquences répétitives.

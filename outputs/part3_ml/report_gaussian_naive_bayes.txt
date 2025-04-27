@@ -1,0 +1,8 @@
+              precision    recall  f1-score   support
+
+ non-suicide       0.91      0.85      0.88     23315
+     suicide       0.85      0.91      0.88     23078
+
+    accuracy                           0.88     46393
+   macro avg       0.88      0.88      0.88     46393
+weighted avg       0.88      0.88      0.88     46393

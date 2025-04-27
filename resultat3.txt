@@ -1,0 +1,49 @@
+Rapport d’Exploration Sémantique et Distributionnelle
+
+Dataset Reddit Suicide/Non-Suicide (Partie 3)
+
+Objectif
+
+Ce rapport a pour ambition de décrire et d’interpréter la structure sémantique des termes clés d’un corpus Reddit lié à la prédiction du risque suicidaire, en s’appuyant sur des embeddings pré-entraînés (spaCy en_core_web_md, GloVe 300D). Nous cherchons à évaluer dans quelle mesure les similarités cosinus, les analogies vectorielles et la visualisation en 2D (PCA) reflètent réellement les champs lexicaux pertinents pour la détection de signaux de détresse.
+
+Méthodologie
+
+Nous avons d’abord chargé le jeu de données (train.parquet) via Polars, segmenté chaque texte en tokens et retenu quinze termes pivots : help, alone, pain, hope, friend, feel, not, like, want, know, life, time, people, tired, suicide. Pour chacun de ces termes, nous avons vérifié la disponibilité d’un vecteur spaCy et extrait les dix mots les plus proches en similarité cosinus brute. Parallèlement, nous avons constitué un ensemble de « sélection » incluant tous les termes pivots et leurs cinq voisins les plus proches.
+Ensuite, nous avons généré toutes les combinaisons possibles a + b – c parmi les quinze termes et, pour chaque combinaison, calculé la similarité maximale entre le vecteur résultant et l’ensemble de la « sélection ». Les dix analogies les plus fortes ont été mises en évidence.
+Enfin, nous avons projeté tous les vecteurs de la sélection en deux dimensions à l’aide d’une PCA accélérée par cuML, afin de visualiser la répartition et les clusters sémantiques.
+
+Résultats et Analyse
+
+1. Exploration des similarités
+Les résultats montrent une grande hétérogénéité selon le terme pivot.
+
+Pour help, les dix voisins (« explore », « community », « Needed », « FOUNDING », « JOINING », « Directs », « Resides », « Occupies », « Co-Founded ») décrivent de manière cohérente un registre institutionnel et communautaire, soulignant l’engagement et la mobilisation collectifs.
+Pour pain, la liste révèle un champ médical très pertinent : « symtom », « TELLTALE », « signs » pointent vers les manifestations cliniques, tandis que « Tuberculosis », « Abscess », « MACULAR », « glaucoma » évoquent des pathologies douloureuses. Cette cohérence démontre la qualité des embeddings sur un vocabulaire de santé.
+En revanche, alone génère des voisins peu intuitifs : « Passing », « HEADING », « once », « Closest », « favourite », « BUSIEST », « where », « places », « COLD », « Pitch ». Plutôt qu’un sentiment de solitude, le modèle associe « alone » à des notions spatiales ou quantitatives.
+Les pivots not, know et time partagent un top-10 quasi-identique (« places », « Pitch », « COLD », « where », « Spots », « Passing », « HEADING », « once », « favourite », « BUSIEST »), révélant la difficulté de ces embeddings à séparer fonctionnels, adverbes temporels et repères spatiaux.
+Les trois verbes de souhait et d’affect (hope, like, want) affichent également des voisins très similaires (« Fan », « FORGET », « LOVE », « Sorry », « Seriously », « lazy », « THINGIES », « ditch », « Mags », « Hoping »). Le corpus GloVe, fortement influencé par le registre informel, mélange pop-culture et émotions sans extraire de véritables synonymes.
+Pour friend, les voisins (« Skool », « CYA », « Chillin », « xoxo », « bb », « Skate », « *** », « Till », « rock », « graff ») reflètent presque exclusivement le langage SMS/slang de Reddit, au détriment d’équivalents classiques (buddy, pal).
+feel offre un mélange de sensations négatives (« NUMB », « hurts », « bleeds ») et de verbes de processus (« REALISING », « Rehabbing », « WALK »).
+tired et suicide sont les plus robustes : « gutted », « Pooped », « DISTURBED », « anxious », « lazy » pour l’épuisement, et « DEPARTED », « Gunning », « murderer », « spree », « KIll », « abort » pour la violence et la mort.
+
+2. Classement des analogies vectorielles
+Les dix combinaisons les mieux classées (« hope+feel–like », « hope+feel–want », « feel+not–know », etc.) illustrent que l’arithmétique vectorielle privilégie avant tout la morphologie (formes en « -ing ») et des dérivations très proches, plutôt que des relations de type « X est à Y ce que A est à B ». Les résultats, dominés par la forme « Hoping », manquent de profondeur sémantique et révèlent la limite de l’approche brute sur un vocabulaire très fréquent et versatile.
+
+3. Visualisation des embeddings par PCA
+La projection 2D met en évidence plusieurs clusters :
+
+Un cluster « médical », en bas à gauche, où pain, symptomatologie et pathologies se rassemblent.
+Un cluster « spirituel/abstrait », en bas au centre, comprenant journey, TRANQUILITY, Rediscover, aeons.
+Un cluster « communautaire », en haut à gauche, autour de help et de termes liés à l’engagement.
+Un cluster « slang social », en haut à droite, illustré par friend et ses voisins SMS.
+Un cluster « épuisement émotionnel », en centre-bas, avec tired et ses variantes (« gutted », « anxious »).
+Les termes fonctionnels (not, know, time, alone) restent dispersés, sans former de groupe distinct, ce qui confirme leur nature polysémique et contextuelle.
+Conclusion et Recommandations
+
+Dans l’ensemble, les embeddings spaCy/GloVe restituent fidèlement certains champs sémantiques cruciaux (douleur, fatigue, mort, engagement communautaire), mais peinent à traiter correctement les termes abstraits, fonctionnels ou liés à l’informel. Les analogies vectorielles s’avèrent limitées, tournant autour de variations morphologiques. Pour améliorer la granularité de l’analyse, il est fortement conseillé de :
+
+Effectuer un filtrage grammatical (POS tags) afin de ne conserver que les voisins sémantiquement pertinents.
+Réentraîner ou affiner les embeddings sur le sous-corpus Reddit pour capter les nuances idiomatiques et techniques du forum.
+Combiner embeddings et features traditionnelles (TF-IDF, n-grammes, indicateurs syntaxiques).
+Explorer des projections non linéaires (t-SNE, UMAP) pour mettre en évidence d’éventuelles séparations plus fines entre classes « suicide » et « non-suicide ».
+Cette démarche permettra de tirer un meilleur parti de l’information distribuée dans les vecteurs et d’optimiser la détection des signaux de détresse.
