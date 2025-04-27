@@ -28,9 +28,24 @@ except FileNotFoundError:
     print(f"Erreur : Le fichier {DATASET_PATH} n'a pas été trouvé.")
     exit()
 
+# --- Activation du GPU (si disponible) ---
+gpu_activated = False
+try:
+    # Tente d'activer le GPU. Nécessite spacy[cuda] ou spacy[cudaXXX] installé.
+    spacy.require_gpu()
+    gpu_activated = True
+    print("GPU activé pour spaCy.")
+except Exception as e:
+    print(f"GPU non activé pour spaCy (raison : {e}). Utilisation du CPU.")
+    # Le script continuera sur CPU si le GPU n'est pas disponible/configuré
+
 try:
     nlp = spacy.load(SPACY_MODEL)
-    print("Modèle spaCy chargé.")
+    print(f"Modèle spaCy '{SPACY_MODEL}' chargé.")
+    if gpu_activated:
+        print("Le modèle utilisera le GPU.")
+    else:
+        print("Le modèle utilisera le CPU.")
 except OSError:
     print(f"Erreur : Le modèle spaCy '{SPACY_MODEL}' n'est pas installé.")
     print(f"Veuillez l'installer avec : python -m spacy download {SPACY_MODEL}")
@@ -44,13 +59,24 @@ def get_pos_tags(text):
     doc = nlp(str(text)) # Assurer que le texte est une chaîne
     return [token.pos_ for token in doc if not token.is_punct and not token.is_space]
 
-# Appliquer la fonction en utilisant les expressions Polars
+# --- Utilisation de nlp.pipe() pour accélérer le traitement (CPU ou GPU) ---
+BATCH_SIZE = 1000 # Augmenter la taille du lot pour le GPU peut être bénéfique
+print(f"Utilisation de nlp.pipe() avec batch_size={BATCH_SIZE}")
+
+# Extraire les textes pour nlp.pipe()
+texts_to_process = df['text'].cast(pl.Utf8).to_list()
+
+# Appliquer le POS Tagging avec nlp.pipe()
 print("Application du POS Tagging...")
-# Assurer que 'text' est traité comme str, puis appliquer la fonction
-df = df.with_columns(
-    pl.col("text").cast(pl.Utf8).apply(get_pos_tags).alias("pos_tags")
-)
+pos_tags_list = []
+# Utiliser nlp.pipe pour traiter les textes par lots
+for doc in nlp.pipe(texts_to_process, batch_size=BATCH_SIZE):
+    pos_tags_list.append([token.pos_ for token in doc if not token.is_punct and not token.is_space])
+
+# Ajouter les résultats comme une nouvelle colonne
+df = df.with_columns(pl.Series("pos_tags", pos_tags_list))
 print("POS Tagging terminé.")
+
 
 # Agréger les comptes par label en utilisant Polars puis Counter (avec les labels textuels)
 print("Agrégation des POS tags par label...")
@@ -99,12 +125,17 @@ def get_ner_labels(text):
     doc = nlp(str(text)) # Assurer que le texte est une chaîne
     return [ent.label_ for ent in doc.ents]
 
-# Appliquer la fonction en utilisant les expressions Polars
+# Appliquer la NER avec nlp.pipe()
 print("Application de la NER...")
-df = df.with_columns(
-    pl.col("text").cast(pl.Utf8).apply(get_ner_labels).alias("ner_labels")
-)
+ner_labels_list = []
+# Réutiliser texts_to_process
+for doc in nlp.pipe(texts_to_process, batch_size=BATCH_SIZE):
+    ner_labels_list.append([ent.label_ for ent in doc.ents])
+
+# Ajouter les résultats comme une nouvelle colonne
+df = df.with_columns(pl.Series("ner_labels", ner_labels_list))
 print("NER terminée.")
+
 
 # Agréger les comptes par label en utilisant Polars puis Counter (avec les labels textuels)
 print("Agrégation des labels NER par label...")
