@@ -22,3 +22,4 @@ nltk
 gensim
 wordcloud
 polars
+pip
