@@ -1,0 +1,175 @@
+import polars as pl # Importer Polars
+import pandas as pd # Garder pandas pour la conversion avant Seaborn si nécessaire
+import spacy
+from collections import Counter
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+
+# --- Configuration ---
+# Mise à jour pour utiliser le fichier Parquet et supprimer l'échantillonnage
+DATASET_PATH = "dataset/train.parquet"
+OUTPUT_DIR = "outputs/part2/plots"
+SPACY_MODEL = "en_core_web_sm"
+# SAMPLE_SIZE = None # Supprimé - traitement complet du dataset
+
+# Créer le dossier de sortie s'il n'existe pas
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# --- Chargement des données et du modèle ---
+print("--- Partie 2 : Analyse Syntaxique et Identification d'Entités ---")
+
+print(f"\n[1. Chargement des données avec Polars et du modèle spaCy ({SPACY_MODEL})]")
+try:
+    # Charger les données avec Polars depuis le fichier Parquet
+    df = pl.read_parquet(DATASET_PATH)
+    print(f"Dataset chargé ({len(df)} lignes) depuis {DATASET_PATH}.")
+except FileNotFoundError:
+    print(f"Erreur : Le fichier {DATASET_PATH} n'a pas été trouvé.")
+    exit()
+
+try:
+    nlp = spacy.load(SPACY_MODEL)
+    print("Modèle spaCy chargé.")
+except OSError:
+    print(f"Erreur : Le modèle spaCy '{SPACY_MODEL}' n'est pas installé.")
+    print(f"Veuillez l'installer avec : python -m spacy download {SPACY_MODEL}")
+    exit()
+
+# --- 2. Étiquetage Morpho-syntaxique (POS Tagging) ---
+print("\n[2. Étiquetage Morpho-syntaxique (POS Tagging)]")
+
+# Fonction pour extraire les POS tags d'un texte
+def get_pos_tags(text):
+    doc = nlp(str(text)) # Assurer que le texte est une chaîne
+    return [token.pos_ for token in doc if not token.is_punct and not token.is_space]
+
+# Appliquer la fonction en utilisant les expressions Polars
+print("Application du POS Tagging...")
+# Assurer que 'text' est traité comme str, puis appliquer la fonction
+df = df.with_columns(
+    pl.col("text").cast(pl.Utf8).apply(get_pos_tags).alias("pos_tags")
+)
+print("POS Tagging terminé.")
+
+# Agréger les comptes par label en utilisant Polars puis Counter (avec les labels textuels)
+print("Agrégation des POS tags par label...")
+# Utiliser les labels textuels 'non-suicide' et 'suicide'
+pos_tags_non_suicide = df.filter(pl.col("label") == "non-suicide").select("pos_tags").explode("pos_tags").to_series().to_list()
+pos_tags_suicide = df.filter(pl.col("label") == "suicide").select("pos_tags").explode("pos_tags").to_series().to_list()
+
+pos_counts_non_suicide = Counter(pos_tags_non_suicide)
+pos_counts_suicide = Counter(pos_tags_suicide)
+print("Agrégation terminée.")
+
+# Convertir en DataFrame pandas pour la visualisation
+total_tokens_non_suicide = len(pos_tags_non_suicide)
+total_tokens_suicide = len(pos_tags_suicide)
+
+pos_df_non_suicide = pd.DataFrame.from_dict(pos_counts_non_suicide, orient='index', columns=['count'])
+pos_df_non_suicide['label'] = 'non-suicide' # Utiliser le label textuel
+pos_df_non_suicide['proportion'] = pos_df_non_suicide['count'] / total_tokens_non_suicide if total_tokens_non_suicide > 0 else 0
+
+pos_df_suicide = pd.DataFrame.from_dict(pos_counts_suicide, orient='index', columns=['count'])
+pos_df_suicide['label'] = 'suicide' # Utiliser le label textuel
+pos_df_suicide['proportion'] = pos_df_suicide['count'] / total_tokens_suicide if total_tokens_suicide > 0 else 0
+
+pos_df_combined = pd.concat([pos_df_non_suicide, pos_df_suicide]).reset_index().rename(columns={'index': 'pos_tag'})
+
+# Visualisation
+print("Génération du graphique de distribution des POS tags...")
+plt.figure(figsize=(12, 8))
+# Utiliser les labels textuels pour hue et spécifier l'ordre
+sns.barplot(data=pos_df_combined, x='pos_tag', y='proportion', hue='label', palette='viridis', hue_order=['non-suicide', 'suicide'])
+plt.title('Distribution Proportionnelle des POS Tags par Classe (Non-Suicide vs Suicide)')
+plt.xlabel('Catégorie Grammaticale (POS Tag)')
+plt.ylabel('Proportion')
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+pos_plot_path = os.path.join(OUTPUT_DIR, "1_pos_distribution.png")
+plt.savefig(pos_plot_path)
+print(f"Graphique sauvegardé : {pos_plot_path}")
+plt.close()
+
+# --- 3. Reconnaissance d'Entités Nommées (NER) ---
+print("\n[3. Reconnaissance d'Entités Nommées (NER)]")
+
+# Fonction pour extraire les labels d'entités d'un texte
+def get_ner_labels(text):
+    doc = nlp(str(text)) # Assurer que le texte est une chaîne
+    return [ent.label_ for ent in doc.ents]
+
+# Appliquer la fonction en utilisant les expressions Polars
+print("Application de la NER...")
+df = df.with_columns(
+    pl.col("text").cast(pl.Utf8).apply(get_ner_labels).alias("ner_labels")
+)
+print("NER terminée.")
+
+# Agréger les comptes par label en utilisant Polars puis Counter (avec les labels textuels)
+print("Agrégation des labels NER par label...")
+# Utiliser les labels textuels 'non-suicide' et 'suicide'
+ner_labels_non_suicide = df.filter(pl.col("label") == "non-suicide").select("ner_labels").explode("ner_labels").to_series().to_list()
+ner_labels_suicide = df.filter(pl.col("label") == "suicide").select("ner_labels").explode("ner_labels").to_series().to_list()
+
+ner_counts_non_suicide = Counter(ner_labels_non_suicide)
+ner_counts_suicide = Counter(ner_labels_suicide)
+print("Agrégation terminée.")
+
+# Convertir en DataFrame pandas pour la visualisation
+total_ents_non_suicide = len(ner_labels_non_suicide)
+total_ents_suicide = len(ner_labels_suicide)
+
+ner_df_non_suicide = pd.DataFrame.from_dict(ner_counts_non_suicide, orient='index', columns=['count'])
+ner_df_non_suicide['label'] = 'non-suicide' # Utiliser le label textuel
+ner_df_non_suicide['proportion'] = ner_df_non_suicide['count'] / total_ents_non_suicide if total_ents_non_suicide > 0 else 0
+
+ner_df_suicide = pd.DataFrame.from_dict(ner_counts_suicide, orient='index', columns=['count'])
+ner_df_suicide['label'] = 'suicide' # Utiliser le label textuel
+ner_df_suicide['proportion'] = ner_df_suicide['count'] / total_ents_suicide if total_ents_suicide > 0 else 0
+
+# Filtrer les entités rares si nécessaire pour une meilleure visualisation
+ner_df_combined = pd.concat([ner_df_non_suicide, ner_df_suicide]).reset_index().rename(columns={'index': 'ner_label'})
+# Optionnel: Garder seulement les types d'entités présents dans les deux classes ou au dessus d'un seuil
+# La logique de filtrage reste la même, mais elle opère sur les labels textuels
+common_ner_labels = ner_df_combined.groupby('ner_label')['label'].nunique()
+ner_df_filtered = ner_df_combined[ner_df_combined['ner_label'].isin(common_ner_labels[common_ner_labels > 0].index)] # Garde si présent au moins une fois
+
+# Visualisation
+if not ner_df_filtered.empty:
+    print("Génération du graphique de distribution des types d'entités (NER)...")
+    plt.figure(figsize=(12, 8))
+    # Utiliser les labels textuels pour hue et spécifier l'ordre
+    sns.barplot(data=ner_df_filtered, x='ner_label', y='proportion', hue='label', palette='magma', hue_order=['non-suicide', 'suicide'])
+    plt.title('Distribution Proportionnelle des Types d\'Entités (NER) par Classe (Non-Suicide vs Suicide)')
+    plt.xlabel('Type d\'Entité (NER Label)')
+    plt.ylabel('Proportion')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    ner_plot_path = os.path.join(OUTPUT_DIR, "2_ner_distribution.png")
+    plt.savefig(ner_plot_path)
+    print(f"Graphique sauvegardé : {ner_plot_path}")
+    plt.close()
+else:
+    print("Aucune entité nommée commune trouvée ou détectée pour la visualisation.")
+
+
+# --- 4. Analyse des Dépendances Syntaxiques (Exemples) ---
+print("\n[4. Analyse des Dépendances Syntaxiques (Commentaires)]")
+# L'analyse complète des dépendances sur tout le corpus est coûteuse.
+# On se concentre ici sur l'idée générale.
+# Une analyse plus poussée pourrait compter les types de relations (nsubj, dobj, neg, etc.)
+# par classe ou visualiser des arbres pour des phrases spécifiques.
+
+# Exemple de ce qu'on pourrait analyser :
+# - Fréquence des relations de négation ('neg')
+# - Types de sujets ('nsubj') associés à des verbes exprimant des sentiments ('feel', 'want'...)
+# - Utilisation de modificateurs ('amod', 'advmod') sur des termes négatifs/positifs
+
+print("L'analyse des dépendances nécessiterait une exploration plus approfondie.")
+print("Elle pourrait révéler des structures de phrases distinctes entre les classes,")
+print("par exemple dans l'expression de la négation ou la modification de termes clés.")
+# La visualisation avec displacy n'est pas implémentée ici car elle est interactive
+# ou génère du HTML, ce qui est moins pratique pour une sauvegarde directe.
+
+print("\n--- Fin de la Partie 2 ---")
