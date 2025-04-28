@@ -10,11 +10,20 @@ wheels/
 .venv
 /mlruns
 
-# Ignorer le dossier outputs sauf PNG, test_metrics et best_model
-/outputs/**
-!/outputs/**/*.png
-!/outputs/**/test_metrics.txt
-!/outputs/**/best_model*
-!/outputs/**/best_model*/**
+# Ignorer les dossiers outputs spécifiques, mais conserver les PNG et test_metrics.txt de part4
+/outputs/part1/
+/outputs/part2/
+/outputs/part3/
+/outputs/part4/*
+!/outputs/part4/plots/
+/outputs/part4/plots/*
+!/outputs/part4/plots/*.png
+!/outputs/part4/models/
+/outputs/part4/models/*
+!/outputs/part4/models/*/
+/outputs/part4/models/*/*
+!/outputs/part4/models/*/test_metrics.txt
+
+# Ignorer les logs et checkpoints
 /outputs/**/logs/**
 /outputs/**/checkpoint-*/
