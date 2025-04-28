@@ -24,6 +24,18 @@ wheels/
 /outputs/part4/models/*/*
 !/outputs/part4/models/*/test_metrics.txt
 
+# Ignorer spécifiquement les fichiers lourds
+*.pt
+*.pth
+*.bin
+*.onnx
+*.h5
+*.hdf5
+*.pkl
+*.joblib
+*.model
+/outputs/part4/models/transformer/best_model/
+
 # Ignorer les logs et checkpoints
 /outputs/**/logs/**
 /outputs/**/checkpoint-*/
