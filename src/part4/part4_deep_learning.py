@@ -59,9 +59,9 @@ def prepare_data(tokenizer_name='bert-base-uncased', max_len=128, batch_size=32)
     val_dataset = TextDataset(val_texts.tolist(), val_labels.tolist(), tokenizer, max_len)
     test_dataset = TextDataset(test_texts.tolist(), test_labels.tolist(), tokenizer, max_len)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
 
     return train_loader, val_loader, test_loader, tokenizer
 
@@ -246,34 +246,49 @@ def run_transformer(train_dataset, val_dataset, test_dataset, tokenizer,
     model = AutoModelForSequenceClassification.from_pretrained(
         pretrained_model_name, num_labels=2
     ).to(device)
-
+    
+    model_dir = 'outputs/part4/models/transformer'
+    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs('outputs/part4/plots', exist_ok=True)
+    history = {'train_loss': [], 'val_loss': [], 'val_acc': []}
+    
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
         preds = np.argmax(logits, axis=1)
         acc = accuracy_score(labels, preds)
         prec, rec, f1, _ = precision_recall_fscore_support(labels, preds, average='binary')
-        cm = confusion_matrix(labels, preds)
-        os.makedirs('outputs/part4/plots', exist_ok=True)
-        plt.figure(figsize=(6,6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-        plt.title(f'{pretrained_model_name} Confusion Matrix')
-        plt.savefig(f'outputs/part4/plots/{pretrained_model_name}_confusion_matrix.png')
-        plt.close()
         return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1': f1}
-
+    
+    # Configuration de l'entraînement
+    batch_size_tr = 96
+    steps_per_epoch = max(1, len(train_dataset) // batch_size_tr)
     training_args = TrainingArguments(
-        output_dir='outputs/part4/transformer',
-        num_train_epochs=3,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
+        output_dir=model_dir,
+        num_train_epochs=5,
+        per_device_train_batch_size=batch_size_tr,
+        per_device_eval_batch_size=batch_size_tr,
         eval_strategy='epoch',
         save_strategy='epoch',
         logging_dir='outputs/part4/logs',
         load_best_model_at_end=True,
-        metric_for_best_model='accuracy'
+        metric_for_best_model='f1',
+        logging_steps=steps_per_epoch,
+        fp16=True,
+        dataloader_num_workers=4,
+        report_to=None,
     )
-
-    trainer = Trainer(
+    
+    class CustomTrainer(Trainer):
+        def log(self, logs, start_time=None):
+            super().log(logs, start_time)
+            if 'loss' in logs:
+                history['train_loss'].append(logs['loss'])
+            if 'eval_accuracy' in logs:
+                history['val_acc'].append(logs['eval_accuracy'])
+            if 'eval_loss' in logs:
+                history['val_loss'].append(logs['eval_loss'])
+    
+    trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
@@ -281,23 +296,69 @@ def run_transformer(train_dataset, val_dataset, test_dataset, tokenizer,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics
     )
+    
+    # Entraînement du modèle
     trainer.train()
-    # Sauvegarde explicite du meilleur Transformer
-    trainer.model.save_pretrained('outputs/part4/transformer/best_transformer')
-    tokenizer.save_pretrained('outputs/part4/transformer/best_transformer')
-    trainer.evaluate()
-    test_metrics = trainer.predict(test_dataset).metrics
-    with open('outputs/part4/transformer_test_metrics.txt', 'w') as f:
-        f.write(str(test_metrics))
-    print(f"Transformer test metrics: {test_metrics}")
+    
+    # Sauvegarde du meilleur modèle
+    trainer.model.save_pretrained(os.path.join(model_dir, 'best_model'))
+    tokenizer.save_pretrained(os.path.join(model_dir, 'best_model'))
+    
+    # Évaluation sur l'ensemble de validation
+    eval_metrics = trainer.evaluate()
+    
+    # Tracer les courbes d'apprentissage
+    plt.figure()
+    train_losses = history['train_loss']
+    val_losses = history['val_loss']
+    val_accs = history['val_acc']
+    # Ignorer l'évaluation initiale si présente
+    if len(val_losses) == len(train_losses) + 1:
+        val_losses = val_losses[1:]
+        val_accs = val_accs[1:]
+    epochs = range(1, len(train_losses) + 1)
+    if train_losses:
+        plt.plot(epochs, train_losses, label='train_loss')
+    if val_losses:
+        plt.plot(epochs, val_losses, label='val_loss')
+    if val_accs:
+        plt.plot(epochs, val_accs, label='val_acc')
+    plt.legend()
+    plt.title('Transformer Training Curve')
+    plt.savefig('outputs/part4/plots/transformer_training_curve.png')
+    plt.close()
+    
+    # Évaluation sur l'ensemble de test
+    test_output = trainer.predict(test_dataset)
+    test_metrics = test_output.metrics
+    test_preds = np.argmax(test_output.predictions, axis=1)
+    test_labels = [example['labels'].item() for example in test_dataset]
+    
+    # Calculer et sauvegarder les métriques de test
+    test_acc = accuracy_score(test_labels, test_preds)
+    prec, rec, f1, _ = precision_recall_fscore_support(test_labels, test_preds, average='binary')
+    
+    # Sauvegarder les métriques dans le même format que les autres modèles
+    with open(os.path.join(model_dir, 'test_metrics.txt'), 'w') as f:
+        f.write(f"accuracy: {test_acc}\nprecision: {prec}\nrecall: {rec}\nf1: {f1}\n")
+    
+    # Tracer la matrice de confusion
+    cm = confusion_matrix(test_labels, test_preds)
+    plt.figure(figsize=(6,6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title('Transformer Test Confusion Matrix')
+    plt.savefig('outputs/part4/plots/transformer_test_confusion_matrix.png')
+    plt.close()
+    
+    print(f"Transformer test metrics: accuracy={test_acc:.4f}, precision={prec:.4f}, recall={rec:.4f}, f1={f1:.4f}")
     return test_metrics
 
 def main():
     os.makedirs('outputs/part4', exist_ok=True)
     train_loader, val_loader, test_loader, tokenizer = prepare_data()
-    run_lstm(train_loader, val_loader, test_loader, tokenizer)
-    run_cnn(train_loader, val_loader, test_loader, tokenizer)
-    run_gru(train_loader, val_loader, test_loader, tokenizer)
+    # run_lstm(train_loader, val_loader, test_loader, tokenizer)
+    # run_cnn(train_loader, val_loader, test_loader, tokenizer)
+    # run_gru(train_loader, val_loader, test_loader, tokenizer)
     run_transformer(train_loader.dataset, val_loader.dataset, test_loader.dataset, tokenizer)
 
 if __name__ == '__main__':

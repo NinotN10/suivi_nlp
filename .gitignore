@@ -8,3 +8,13 @@ wheels/
 
 # Virtual environments
 .venv
+/mlruns
+
+# Ignorer le dossier outputs sauf PNG, test_metrics et best_model
+/outputs/**
+!/outputs/**/*.png
+!/outputs/**/test_metrics.txt
+!/outputs/**/best_model*
+!/outputs/**/best_model*/**
+/outputs/**/logs/**
+/outputs/**/checkpoint-*/
